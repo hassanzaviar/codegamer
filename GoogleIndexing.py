@@ -1,46 +1,38 @@
-from oauth2client.service_account import ServiceAccountCredentials
-import httplib2
-import json
-
+from google.oauth2.service_account import Credentials
+from google.auth.transport.requests import Request
+from google_auth_httplib2 import AuthorizedHttp
 import pandas as pd
+import json
+import time
 
-# https://developers.google.com/search/apis/indexing-api/v3/prereqs#header_2
+# Replace with your JSON key file
 JSON_KEY_FILE = "json_key_file_downloaded_after_creating_your_google_service_account_see_above_details_on_how_to_do.json"
 SCOPES = ["https://www.googleapis.com/auth/indexing"]
 
-credentials = ServiceAccountCredentials.from_json_keyfile_name(JSON_KEY_FILE, scopes=SCOPES)
-http = credentials.authorize(httplib2.Http())
+# Authenticate with Google Service Account
+credentials = Credentials.from_service_account_file(JSON_KEY_FILE, scopes=SCOPES)
+http = AuthorizedHttp(credentials)
 
-def indexURL(urls, http):
-    # print(type(url)); print("URL: {}".format(url));return;
-
+def indexURL(url, http):
     ENDPOINT = "https://indexing.googleapis.com/v3/urlNotifications:publish"
-    
-    for u in urls:
-        # print("U: {} type: {}".format(u, type(u)))
-    
-        content = {}
-        content['url'] = u.strip()
-        content['type'] = "URL_UPDATED"
-        json_ctn = json.dumps(content)    
-        # print(json_ctn);return
-    
-        response, content = http.request(ENDPOINT, method="POST", body=json_ctn)
+    content = {'url': url.strip(), 'type': "URL_UPDATED"}
+    json_ctn = json.dumps(content)
 
-        result = json.loads(content.decode())
+    response, content = http.request(ENDPOINT, method="POST", body=json_ctn, headers={"Content-Type": "application/json"})
+    result = json.loads(content.decode())
 
-        # For debug purpose only
-        if("error" in result):
-            print("Error({} - {}): {}".format(result["error"]["code"], result["error"]["status"], result["error"]["message"]))
-        else:
-            print("urlNotificationMetadata.url: {}".format(result["urlNotificationMetadata"]["url"]))
-            print("urlNotificationMetadata.latestUpdate.url: {}".format(result["urlNotificationMetadata"]["latestUpdate"]["url"]))
-            print("urlNotificationMetadata.latestUpdate.type: {}".format(result["urlNotificationMetadata"]["latestUpdate"]["type"]))
-            print("urlNotificationMetadata.latestUpdate.notifyTime: {}".format(result["urlNotificationMetadata"]["latestUpdate"]["notifyTime"]))
+    if "error" in result:
+        print(f"Error({result['error']['code']} - {result['error']['status']}): {result['error']['message']}")
+    else:
+        print(f"Indexed URL: {result['urlNotificationMetadata']['url']}")
+        print(f"Notification Type: {result['urlNotificationMetadata']['latestUpdate']['type']}")
+        print(f"Notify Time: {result['urlNotificationMetadata']['latestUpdate']['notifyTime']}")
 
-"""
-data.csv has 2 columns: URL and date.
-I just need the URL column.
-"""
+# Read CSV
 csv = pd.read_csv("my_data.csv")
-csv[["URL"]].apply(lambda x: indexURL(x, http))
+urls = csv["URL"].tolist()
+
+# Process each URL
+for url in urls:
+    indexURL(url, http)
+    time.sleep(1)  # Delay to avoid hitting rate limits
